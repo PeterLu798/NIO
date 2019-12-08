@@ -1,0 +1,3 @@
+com.spi.impl.CatHelloImpl
+com.spi.impl.ChickenHelloImpl
+com.spi.impl.DogHelloImpl
