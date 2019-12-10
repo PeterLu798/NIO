@@ -12,10 +12,11 @@
 也就是说AIO的路还很长。
 <br>&emsp;那么当下最适合的用于设计高性能的服务类框架的技术也就只有NIO了。
 <br>&emsp;要学习NIO，最关键的几个技术要学会。
-<br>&emsp;一十缓冲区的使用。缓冲区的Java实现是Buffer类，它是一个抽象类，总共有7个直接子类：ByteBuffer, CharBuffer, ShortBuffer,
+<br>&emsp;一是缓冲区的使用。缓冲区的Java实现是Buffer类，它是一个抽象类，总共有7个直接子类：ByteBuffer, CharBuffer, ShortBuffer,
 IntBuffer, FloatBuffer, LongBuffer以及DoubleBuffer。本篇主要介绍ByteBuffer和CharBuffer的一些api，其他类的也都差不多。
-<br>&emsp;缓冲区的实现有两种方式：第一种是堆缓冲区，第二种是直接缓冲区。堆缓冲区的实质是数组，它的大小受到JVM内存的约束。直接缓冲区是指操作系统
-直接申明的一块内存，它的大小受物理内存的限制。直接缓冲区相比于堆缓冲区的另外一个优势是少了JVM和OS之间的复制，效率较高。
+<br>&emsp;缓冲区的实现有两种方式：第一种是堆缓冲区，第二种是直接缓冲区。堆缓冲区的实质是数组，它受到JVM堆内存的管理。直接缓冲区是建立在直接内存中的缓冲区，
+直接内存(Direct Memory)与本地内存(Native Memory)相似，首先它不在JVM堆内存中，因此不会因为GC而释放内存，其次它的大小受到操作系统对整个用户程序（也就是其所属的整个Java应用）
+所分配的内存大小的限制。使用直接内存的好处是减少了缓冲区在JVM堆内存和本地内存之间的复制，有助于提高性能。
 <br>&emsp;缓冲区相比于BIO中直接使用字节数组还有一个优势就是，缓冲区定义了很多操作数组的方法，这样使用起来非常方便，这些方法我们在后面详细介绍。
 <br>&emsp;学习NIO的第二个必学的技术是通道，这是很自然的事情，要把数据从一个缓冲区传输到另一个缓冲区就必须要有一条通道，NIO中这条通道的实现是
 java.nio.channels.Channel，这是一个接口。
@@ -145,11 +146,59 @@ Spring WebFlux, Apache Dubbo, Zookeeper等等。
 <br>put(ByteBuffer src) 
 <br>此方法相当于put(byte[] src)，将缓冲区src的remaining()之间的元素写入此缓冲区的remaining()之间，
 此方法也要保证此缓冲区的remaining()大于等于 src.remaining()
+<br>putChar(char value): position会增加2【因为char占用2个字节】
+<br>putShort(short value): position会增加2
+<br>putInt(int value): position会增加4
+<br>putFloat(float value): position会增加4
+<br>putLong(long value): position会增加8
+<br>putDouble(double value): position会增加8
+* 绝对位置的读写方法，这些方法不会改变缓冲区的位置
+<br>get(int index)
+<br>put(int index, byte b)
+<br>putChar(int index, char value)
+<br>putShort(int index, short value)
+<br>putInt(int index, int value)
+<br>putFloat(int index, float value)
+<br>putLong(int index, long value)
+<br>putDouble(int index, double value)
 
+<br>2.2.2 复制缓冲区
+* 复制缓冲区的剩余空间
+<br>以下这这方法都是复制缓冲区的:
+<br>ByteBuffer slice()
+<br>CharBuffer asCharBuffer()
+<br>ShortBuffer asShortBuffer()
+<br>IntBuffer asIntBuffer()
+<br>FloatBuffer asFloatBuffer()
+<br>LongBuffer asLongBuffer()
+<br>DoubleBuffer asDoubleBuffer()
+<br>核心要点如下：
+<br>(1) 新缓冲区的内容是从此缓冲区的当前position开始，新缓冲区的limit为此缓冲区的remaining()的 1/n ，n为进制数，slice()方法可以理解为 n=1
+<br>(2) 新缓冲区与原缓冲区共享底层数组，因此：
+<br>&emsp;1> 原缓冲区元素的更改在新缓冲区中是可见的，反之亦然
+<br>&emsp;2> 当且仅当原缓冲区是直接缓冲区时，新缓冲区才是直接缓冲区
+<br>&emsp;3> 当且仅当原缓冲区是只读缓冲区时，新缓冲区才是只读的
+<br>(3) 新缓冲区的position、limit、mark与原缓冲区时独立的。新缓冲区的初始position是0，limit为原缓冲区的remaining()大小，mark是-1
+* 缓冲区的快照
+<br>ByteBuffer duplicate(): 复制一个与原缓冲区一模一样的缓冲区，包括position, limit, capacity, mark都相同，这两个缓冲区共享数组，但是position, limit, mark都是相互独立的
 
-<br>&emsp;
-<br>&emsp;
-<br>&emsp;
-<br>&emsp;
-<br>&emsp;
+<br>2.2.3 解决中文乱码问题
+<br>&emsp;乱码的原因是编码不一致，解决办法就是使编码对称。
+<br>(1) 在存、取时都使用 utf-16BE 编码，因为get方法无法指定编码格式，因此我们在写的时候可以指定
+```java
+    "中文乱码".getBytes("utf-16BE")
+```
+这样在get时就不会乱码
+<br>(2) 使用decode转码让编码对称
+```java
+    CharBuffer buffer = Charset.forName("utf-8").decode(byteBuffer);
+```
+
+<br>2.2.4 比较缓冲区
+<br>&emsp;比较缓冲区的方法是 equals方法和compareTo方法
+<br>(1) 相同点：都是比较remaining()之间的元素是否相等
+<br>(2) 不同的：equals返回true/false，compareTo返回int: 0表示相等，非0表示不相等，大于0表示this.remaining() < that.remaining()
+
+<h3 id="3">3. 通道</h3>
+<br>3.1 基本概念
 <br>&emsp;
